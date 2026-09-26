@@ -12,6 +12,7 @@ img{max-width:100%;}
 <title>Rooted Arabic</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Noto+Naskh+Arabic:wght@400;500;700&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,450;9..144,600;9..144,700&family=Karla:wght@400;500;600;700&display=swap">
+<script src="assets/audio-data.js"></script>
 <style>
 :root{
   --bg:#F2F0E6; --surface:#FFFFFF; --surface-2:#FBF9F2;
@@ -545,19 +546,7 @@ function buildSession(){
   return shuffle([...due, ...shuffle(fresh).slice(0,10)]).map(c=>c.id);
 }
 
-/* =================== VOICE: TTS =================== */
-let arabicVoice = null, voicesReady = false;
-function loadVoices(){
-  const voices = speechSynthesis.getVoices ? speechSynthesis.getVoices() : [];
-  if(voices.length){
-    arabicVoice = voices.find(v=>/^ar/i.test(v.lang)) || null;
-    voicesReady = true;
-  }
-}
-if('speechSynthesis' in window){
-  loadVoices();
-  speechSynthesis.onvoiceschanged = loadVoices;
-}
+/* =================== VOICE: TTS (fallback only — pre-recorded audio is primary) =================== */
 function freshArabicVoice(){
   try{
     const voices = speechSynthesis.getVoices() || [];
@@ -597,6 +586,52 @@ function speakRepeat(text, times, rate){
 
 function stripAr(s){ return (s||'').replace(/[\u064B-\u0652\u0670\u0640]/g,'').replace(/[أإآ]/g,'ا').replace(/[ىة]/g,c=>c==='ة'?'ه':'ي').replace(/\s|[.,!؟?،]/g,''); }
 
+/* =================== VOICE: pre-recorded Levantine audio (falls back to live TTS) =================== */
+let currentAudio = null;
+function stopAudio(){
+  if(currentAudio){ try{ currentAudio.pause(); }catch(e){} currentAudio = null; }
+  try{ speechSynthesis.cancel(); }catch(e){}
+}
+function playAudio(id, fallbackText, rate){
+  stopAudio();
+  const src = window.AUDIO && window.AUDIO[id];
+  if(!src) return fallbackText ? speak(fallbackText, rate) : false;
+  try{
+    const a = new Audio(src);
+    currentAudio = a;
+    a.play().catch(()=>{ if(fallbackText) speak(fallbackText, rate); });
+    return true;
+  }catch(e){ return fallbackText ? speak(fallbackText, rate) : false; }
+}
+function playSequence(ids){
+  stopAudio();
+  let i = 0;
+  function next(){
+    if(i>=ids.length) return;
+    const src = window.AUDIO && window.AUDIO[ids[i]];
+    if(!src){ i++; next(); return; }
+    const a = new Audio(src);
+    currentAudio = a;
+    a.onended = ()=>{ i++; next(); };
+    a.play().catch(()=>{ i++; next(); });
+  }
+  next();
+}
+function playAudioRepeat(id, fallbackText, times, rate){
+  stopAudio();
+  const src = window.AUDIO && window.AUDIO[id];
+  if(!src){ if(fallbackText) speakRepeat(fallbackText, times, rate); return; }
+  let n = 0;
+  function again(){
+    if(n>=times) return;
+    const a = new Audio(src);
+    currentAudio = a;
+    a.onended = ()=>{ n++; again(); };
+    a.play().catch(()=>{ n++; again(); });
+  }
+  again();
+}
+
 /* =================== UI HELPERS =================== */
 function toast(msg){
   const el = document.getElementById('toastRoot');
@@ -609,7 +644,6 @@ function statusPill(cardId){
   const label = s==='new'?'New':s==='learning'?'Learning':'Mastered';
   return '<span class="pill '+s+'">'+label+'</span>';
 }
-window.speakBtn = function(text){ speak(text); };
 
 /* =================== PROGRAM ROADMAP =================== */
 const VOCAB_PHRASE_CARDS = ALL_CARDS.filter(c=>c.kind!=='letter');
@@ -742,7 +776,7 @@ function letterDetailHtml(l){
   <div class="card" style="background:var(--surface-2); margin-top:6px;">
     <div style="display:flex; align-items:center; gap:12px;">
       <div class="ar" style="font-size:24px; flex:1;">${l.example.ar}</div>
-      <button class="iconbtn" onclick="speakBtn('${l.example.ar}')">🔊</button>
+      <button class="iconbtn" onclick="playAudio('letter-${l.id}','${l.example.ar}')">🔊</button>
     </div>
     <div class="muted" style="font-size:13px; margin-top:4px;">${l.example.translit} — ${l.example.meaning}</div>
   </div>
@@ -786,7 +820,10 @@ function setupTrace(letter){
 window.clearTrace = function(){ const cv=document.getElementById('traceCanvas'); if(cv && cv._redraw) cv._redraw(); };
 
 function openLetterQuiz(){
-  const pool = shuffle([...PHRASES.map(p=>p.ar), ...ROOTS.flatMap(r=>r.words.map(w=>w.ar))]);
+  const pool = shuffle([
+    ...PHRASES.map((p,i)=>({id:'phrase-'+i, ar:p.ar})),
+    ...ROOTS.flatMap(r=>r.words.map((w,i)=>({id:'vocab-'+r.id+'-'+i, ar:w.ar})))
+  ]);
   quizState = {i:0, correct:0, pool: pool.slice(0,8)};
   renderLetterQuiz();
 }
@@ -799,12 +836,12 @@ function renderLetterQuiz(){
     return;
   }
   const word = quizState.pool[quizState.i];
-  const firstChar = stripAr(word)[0];
-  const correctId = CHAR_TO_LETTER[firstChar] || CHAR_TO_LETTER[word.replace(/[\u064B-\u0652\u0670]/g,'')[0]];
+  const firstChar = stripAr(word.ar)[0];
+  const correctId = CHAR_TO_LETTER[firstChar];
   const options = shuffle([correctId, ...shuffle(LETTERS.map(l=>l.id).filter(id=>id!==correctId)).slice(0,3)]);
   showModal(`<div class="sheet-head"><h3>Letter match ${quizState.i+1}/${quizState.pool.length}</h3><button class="iconbtn" onclick="closeModal()">✕</button></div>
     <div style="text-align:center; margin:18px 0;">
-      <button class="iconbtn" style="width:56px; height:56px; font-size:22px; margin:0 auto;" onclick="speakBtn('${word}')">🔊</button>
+      <button class="iconbtn" style="width:56px; height:56px; font-size:22px; margin:0 auto;" onclick="playAudio('${word.id}','${word.ar}')">🔊</button>
       <p class="muted" style="margin-top:10px; font-size:13px;">Tap to hear the word, then pick its first letter.</p>
     </div>
     <div class="grid cols-4">${options.map(id=>{const l=LETTERS.find(x=>x.id===id); return `<button class="letter-tile" onclick="answerLetterQuiz('${id}','${correctId}')"><span class="lg">${l.letter}</span></button>`;}).join('')}</div>`);
@@ -827,7 +864,7 @@ function renderRoots(){
     <div class="word-row">
       <div style="flex:1;"><div class="ar" style="font-size:19px;">${p.ar}</div><div class="muted" style="font-size:12px;">${p.translit}</div></div>
       <div class="en">${p.meaning}</div>
-      <button class="iconbtn" onclick="speakBtn('${p.ar}')">🔊</button>
+      <button class="iconbtn" onclick="playAudio('phrase-${i}','${p.ar}')">🔊</button>
     </div>`).join('')}</div>`;
 }
 function openRoot(id){
@@ -843,7 +880,7 @@ function openRoot(id){
         <div class="muted" style="font-size:12.5px;">${w.translit} — ${w.meaning}${w.note?' · '+w.note:''}</div>
       </div>
       ${statusPill(cid)}
-      <button class="iconbtn" onclick="speakBtn('${w.ar}')">🔊</button>
+      <button class="iconbtn" onclick="playAudio('${cid}','${w.ar}')">🔊</button>
     </div>`; }).join('')}
   `);
 }
@@ -864,22 +901,23 @@ function renderReading(){
 function openPassage(id){
   const p = PASSAGES.find(x=>x.id===id);
   if(!state.passagesRead.includes(id)){ state.passagesRead.push(id); queueSave(); }
-  const fullText = p.lines.map(l=>l.toks.map(t=>t.ar).join(' ')).join('. ');
-  const body = p.lines.map(l=>`
+  const lineIds = p.lines.map((l,i)=>'passage-'+p.id+'-'+i);
+  const body = p.lines.map((l,i)=>`
     ${l.speaker?'<div class="speaker">'+l.speaker+'</div>':''}
-    <div class="passage-line">${l.toks.map(t=>`<span class="tok" onclick="toast('${escapeHtml(t.gl)}')">${t.ar}</span>`).join(' ')}</div>
+    <div class="passage-line">${l.toks.map(t=>`<span class="tok" onclick="toast('${escapeHtml(t.gl)}')">${t.ar}</span>`).join(' ')} <button class="iconbtn" style="width:30px;height:30px;font-size:13px;vertical-align:middle;" onclick="playAudio('${lineIds[i]}','${l.toks.map(t=>t.ar).join(' ').replace(/'/g,"\\'")}')">🔊</button></div>
   `).join('');
   showModal(`
   <div class="sheet-head"><h3>${p.title}</h3><button class="iconbtn" onclick="closeModal()">✕</button></div>
-  <div class="btn-row"><button class="btn gold" onclick="speakBtn('${fullText.replace(/'/g,"\\'")}')">🔊 Play passage</button></div>
+  <div class="btn-row"><button class="btn gold" onclick="playSequence([${lineIds.map(x=>"'"+x+"'").join(',')}])">🔊 Play passage</button></div>
   <div style="margin-top:14px;">${body}</div>
   <hr class="thin">
-  <p class="muted" style="font-size:12px;">Tap any word above to see its meaning as a quick popup.</p>
+  <p class="muted" style="font-size:12px;">Tap any word above to see its meaning as a quick popup, or tap a line's speaker icon to hear just that line.</p>
   `);
 }
 
 /* =================== RENDER: SPEAKING =================== */
 let speakTarget = null;
+let speakAudioId = 'pair-0-a';
 function renderSpeaking(){
   speakTarget = speakTarget || MIN_PAIRS[0].a;
   return `
@@ -915,21 +953,20 @@ function renderSpeaking(){
       </div>
     </div>
     <div class="btn-row" style="margin-top:12px;">
-      <button class="btn gold" style="flex:1;" onclick="speakBtn('${speakTarget.ar.replace(/'/g,"\\'")}')">🔊 Normal speed</button>
-      <button class="btn" style="flex:1;" onclick="speakSlowBtn('${speakTarget.ar.replace(/'/g,"\\'")}')">🐢 Slowed down</button>
-      <button class="btn ghost" onclick="speakRepeatBtn('${speakTarget.ar.replace(/'/g,"\\'")}')">🔁 ×3</button>
+      <button class="btn gold" style="flex:1;" onclick="playAudio('${speakAudioId}','${speakTarget.ar.replace(/'/g,"\\'")}')">🔊 Normal speed</button>
+      <button class="btn" style="flex:1;" onclick="playAudio('${speakAudioId}-slow','${speakTarget.ar.replace(/'/g,"\\'")}',0.55)">🐢 Slowed down</button>
+      <button class="btn ghost" onclick="playAudioRepeat('${speakAudioId}','${speakTarget.ar.replace(/'/g,"\\'")}',3,0.75)">🔁 ×3</button>
     </div>
   </div>`;
 }
-function pickTarget(idx, side){ speakTarget = MIN_PAIRS[idx][side]; render(); }
-function pickTargetTrio(i){ speakTarget = THROAT_TRIO[i]; render(); }
-function pickTargetPhrase(i){ speakTarget = PHRASES[i]; render(); }
-window.speakSlowBtn = function(text){ speak(text, 0.55); };
-window.speakRepeatBtn = function(text){ speakRepeat(text, 3, 0.75); };
+function pickTarget(idx, side){ speakTarget = MIN_PAIRS[idx][side]; speakAudioId = 'pair-'+idx+'-'+side; render(); }
+function pickTargetTrio(i){ speakTarget = THROAT_TRIO[i]; speakAudioId = 'trio-'+i; render(); }
+function pickTargetPhrase(i){ speakTarget = PHRASES[i]; speakAudioId = 'phrase-'+i; render(); }
 
 /* =================== REVIEW SESSION (multiple choice) =================== */
 let session = null;
 function choiceLabel(c){ return c.kind==='letter' ? c.data.translit+' — '+c.data.name : c.meaning; }
+function cardAudioId(card){ return card.kind==='letter' ? 'letter-'+card.data.id : card.id; }
 function buildChoices(card){
   const poolSource = card.kind==='letter' ? LETTERS.filter(l=>l.id!==card.data.id).map(l=>({kind:'letter',data:l})) : ALL_CARDS.filter(c=>c.kind===card.kind && c.id!==card.id);
   const labels = Array.from(new Set(poolSource.map(choiceLabel)));
@@ -964,7 +1001,7 @@ function renderReview(){
     session.choicesFor = session.i;
     session.answered = false;
     session.pickedIdx = null;
-    speak(card.ar);
+    playAudio(cardAudioId(card), card.ar);
   }
   const pct = Math.round((session.i/session.total)*100);
   const kindLabel = card.kind==='letter'?'Letter':card.kind==='vocab'?'Word':'Phrase';
@@ -980,7 +1017,7 @@ function renderReview(){
   <div class="review-card">
     <div class="kind">${kindLabel}</div>
     <div class="ar-display" style="font-size:${arSize};">${card.ar}</div>
-    <button class="audio-btn" onclick="speakBtn('${card.ar.replace(/'/g,"\\'")}')">🔊</button>
+    <button class="audio-btn" onclick="playAudio('${cardAudioId(card)}','${card.ar.replace(/'/g,"\\'")}')">🔊</button>
     ${!session.answered ? '<p class="prompt-hint">Listen, then pick what it means.</p>' : ''}
     <div class="choices">${optionsHtml}</div>
     ${session.answered ? `<div style="width:100%; margin-top:14px; text-align:left;">${extraDetail(card)}</div><button class="btn primary continue-btn" onclick="nextReviewCard()">Continue</button>` : ''}
@@ -1054,9 +1091,7 @@ async function start(){
   await initPersistence();
   await loadState();
   render();
-  if('speechSynthesis' in window){
-    setTimeout(()=>{ if(!arabicVoice) toast('No Arabic voice found on this device — audio playback may be silent. Chrome on desktop usually works best.'); }, 1200);
-  }
+  setTimeout(()=>{ if(!window.AUDIO) toast('Audio clips failed to load — check your connection and reload.'); }, 1500);
 }
 start();
 </script>

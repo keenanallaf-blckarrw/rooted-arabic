@@ -1,0 +1,39 @@
+"""
+Base64-encodes every generated clip in audio/ into a single JS file,
+assets/audio-data.js, published alongside index.html so the app never
+depends on the browser's own (unreliable) text-to-speech for content
+that's already been recorded.
+"""
+import base64
+import json
+import os
+
+ROOT = os.path.join(os.path.dirname(__file__), "..")
+AUDIO_DIR = os.path.join(ROOT, "audio")
+OUT_PATH = os.path.join(ROOT, "assets", "audio-data.js")
+
+
+def main():
+    os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)
+    entries = {}
+    total = 0
+    for fname in sorted(os.listdir(AUDIO_DIR)):
+        if not fname.endswith(".mp3"):
+            continue
+        audio_id = fname[:-4]
+        with open(os.path.join(AUDIO_DIR, fname), "rb") as f:
+            data = f.read()
+        total += len(data)
+        b64 = base64.b64encode(data).decode("ascii")
+        entries[audio_id] = "data:audio/mpeg;base64," + b64
+
+    with open(OUT_PATH, "w", encoding="utf-8") as f:
+        f.write("window.AUDIO = ")
+        f.write(json.dumps(entries, ensure_ascii=False, separators=(",", ":")))
+        f.write(";\n")
+
+    print(f"{len(entries)} clips, {total/1024:.0f} KB raw -> {os.path.getsize(OUT_PATH)/1024:.0f} KB js")
+
+
+if __name__ == "__main__":
+    main()
