@@ -1,6 +1,6 @@
 """
 Single source of truth for Rooted Arabic's content, and for the audio
-manifest fed to generate_audio.py. Mirrors the JS data in the app —
+manifest fed to generate_audio.py. Mirrors the JS data in src/data/content.js —
 if you change one, change the other.
 """
 

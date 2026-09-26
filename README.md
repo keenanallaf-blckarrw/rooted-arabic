@@ -28,10 +28,10 @@ To regenerate the audio (e.g. after editing content in `tools/content.py`):
 ```
 pip install -r tools/requirements.txt
 python3 tools/generate_audio.py      # generates audio/*.mp3 via edge-tts
-python3 tools/build_audio_data.py    # bundles them into assets/audio-data.js
+python3 tools/build_audio_data.py    # bundles them into src/audio/audioData.js
 ```
 
-`tools/content.py` is the single source of truth for what gets voiced — if you add vocabulary to the app's JS data, add it there too and regenerate.
+`tools/content.py` is the single source of truth for what gets voiced — if you add vocabulary to `src/data/content.js`, add it there too and regenerate.
 
 ## The AI conversation partner
 
@@ -39,10 +39,35 @@ The Speaking tab includes a live chat with an AI Levantine conversation partner,
 
 ## Running it
 
-`index.html` is self-contained — no build step needed to run it. Open it directly in a browser, or serve the folder with any static file server. It's also set up for GitHub Pages (see the repo's **Settings → Pages**).
+You need [Node.js](https://nodejs.org) 20.19 or newer.
+
+```
+npm install        # first time only
+npm run dev        # start a local dev server with live reload
+npm run build      # production build into dist/
+npm run preview    # serve the production build locally
+```
+
+Pushing to `main` builds and deploys the site to GitHub Pages automatically (`.github/workflows/deploy.yml`). In the repo's **Settings → Pages**, the source must be set to **GitHub Actions**.
 
 Progress is saved to your browser's local storage. (The Claude Artifact version additionally syncs progress to your account across devices.)
 
+## Project layout
+
+```
+src/
+  main.jsx              entry point
+  App.jsx               tabs, pop-up sheets, and app-wide state
+  screens/              one component per tab or sheet (Dashboard, Script, Roots, Reading, Speaking, Review, ...)
+  components/           shared UI pieces (header, sheet, toast, buttons)
+  hooks/useProgress.js  loads and saves learner progress
+  lib/                  spaced repetition, roadmap, audio playback, Claude platform access
+  data/                 all learning content and the flashcard registry
+  audio/audioData.js    generated audio clips (see Audio pipeline)
+  styles.css
+tools/                  Python audio generation pipeline
+```
+
 ## Stack
 
-Vanilla HTML/CSS/JS, no frameworks. Arabic typography via Amiri, Noto Naskh Arabic, and Noto Sans Arabic (Google Fonts). Audio generation pipeline in Python (`edge-tts`). Live conversation practice via the Claude Artifacts `sample` capability.
+React 19 + Vite. Arabic typography via Amiri, Noto Naskh Arabic, and Noto Sans Arabic (Google Fonts). Audio generation pipeline in Python (`edge-tts`). Live conversation practice via the Claude Artifacts `sample` capability.
