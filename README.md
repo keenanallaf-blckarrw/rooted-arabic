@@ -4,6 +4,12 @@ A personal Arabic learning app built on research-backed language-acquisition met
 
 Tuned for Levantine Arabic alongside Modern Standard Arabic (MSA), with onboarding paths for heritage speakers (understand spoken Arabic, can't read the script yet), complete beginners, and learners with some formal study already.
 
+## Try it
+
+**[Open the app →](https://claude.ai/artifact/DUhiL4aVyKLnUSPu8ZB4Cb)** — the full version, including the live AI conversation partner, with progress synced to your account.
+
+No Claude account, or just want to peek at the code running live? **[Open the GitHub Pages copy →](https://keenanallaf-blckarrw.github.io/rooted-arabic/)** — same app, everything except the AI chat (see below for why), progress saved locally in your browser only.
+
 ## Features
 
 - **Script Lab** — the full alphabet with initial/medial/final connecting forms, sound guides, an ungraded tracing pad, and a "Letter Match" listening game
