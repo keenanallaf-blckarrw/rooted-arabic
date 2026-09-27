@@ -46,9 +46,10 @@ npm install        # first time only
 npm run dev        # start a local dev server with live reload
 npm run build      # production build into dist/
 npm run preview    # serve the production build locally
+npm run deploy     # build and publish to GitHub Pages
 ```
 
-Pushing to `main` builds and deploys the site to GitHub Pages automatically (`.github/workflows/deploy.yml`). In the repo's **Settings → Pages**, the source must be set to **GitHub Actions**.
+`npm run deploy` builds the app and publishes `dist/` to the `gh-pages` branch, which GitHub Pages serves.
 
 Progress is saved to your browser's local storage. (The Claude Artifact version additionally syncs progress to your account across devices.)
 
